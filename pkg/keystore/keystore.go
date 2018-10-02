@@ -2,7 +2,7 @@ package keystore
 
 import (
 	"fmt"
-	"github.com/kelseyhightower/vault-init/pkg/vault"
+	"github.com/hashicorp/vault/api"
 	"runtime"
 )
 
@@ -12,6 +12,6 @@ var (
 
 type Keystore interface {
 	Close()
-	EncryptAndWrite(vault.InitResponse) error
-	ReadAndDecrypt() (*vault.InitResponse, error)
+	EncryptAndWrite(*api.InitResponse) error
+	ReadAndDecrypt() (*api.InitResponse, error)
 }

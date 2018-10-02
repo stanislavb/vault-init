@@ -5,11 +5,8 @@
 package main
 
 import (
-	"bytes"
 	"crypto/tls"
-	"encoding/json"
-	"fmt"
-	"io/ioutil"
+	"github.com/hashicorp/vault/api"
 	"log"
 	"net/http"
 	"os"
@@ -19,13 +16,10 @@ import (
 	"time"
 
 	"github.com/kelseyhightower/vault-init/pkg/keystore"
-	"github.com/kelseyhightower/vault-init/pkg/vault"
 )
 
 var (
-	vaultAddr     string
 	checkInterval string
-	httpClient    http.Client
 )
 
 func initGcpKms() *keystore.GcpKeystore {
@@ -50,7 +44,7 @@ func initGcpKms() *keystore.GcpKeystore {
 func main() {
 	log.Println("Starting the vault-init service...")
 
-	vaultAddr = os.Getenv("VAULT_ADDR")
+	vaultAddr := os.Getenv("VAULT_ADDR")
 	if vaultAddr == "" {
 		vaultAddr = "https://127.0.0.1:8200"
 	}
@@ -70,12 +64,20 @@ func main() {
 	keystoreClient := initGcpKms()
 	defer keystoreClient.Close()
 
-	httpClient = http.Client{
+	httpClient := http.Client{
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{
 				InsecureSkipVerify: true,
 			},
 		},
+	}
+
+	vaultConfig := api.DefaultConfig()
+	vaultConfig.Address = vaultAddr
+	vaultConfig.HttpClient = &httpClient
+	vaultClient, err := api.NewClient(vaultConfig)
+	if err != nil {
+		log.Fatalf("Failed to create vault client %s", err)
 	}
 
 	signalCh := make(chan os.Signal)
@@ -95,13 +97,9 @@ func main() {
 		select {
 		case <-signalCh:
 			stop()
-		default:
+		case <-time.After(checkIntervalDuration):
 		}
-		response, err := httpClient.Head(vaultAddr + "/v1/sys/health")
-
-		if response != nil && response.Body != nil {
-			response.Body.Close()
-		}
+		response, err := vaultClient.Sys().Health()
 
 		if err != nil {
 			log.Println(err)
@@ -109,72 +107,32 @@ func main() {
 			continue
 		}
 
-		switch response.StatusCode {
-		case 200:
-			log.Println("Vault is initialized and unsealed.")
-		case 429:
-			log.Println("Vault is unsealed and in standby mode.")
-		case 501:
+		if !response.Initialized {
 			log.Println("Vault is not initialized. Initializing and unsealing...")
-			initialize(keystoreClient)
-			unseal(keystoreClient)
-		case 503:
-			log.Println("Vault is sealed. Unsealing...")
-			unseal(keystoreClient)
-		default:
-			log.Printf("Vault is in an unknown state. Status code: %d", response.StatusCode)
+			initialize(vaultClient, keystoreClient)
+			unseal(vaultClient, keystoreClient)
+			continue
 		}
-
-		log.Printf("Next check in %s", checkIntervalDuration)
-
-		select {
-		case <-signalCh:
-			stop()
-		case <-time.After(checkIntervalDuration):
+		if response.Sealed {
+			log.Println("Vault is sealed. Unsealing...")
+			unseal(vaultClient, keystoreClient)
+			continue
+		}
+		if response.Standby {
+			log.Println("Vault is unsealed and in standby mode.")
+			continue
 		}
 	}
 }
 
-func initialize(keystoreClient keystore.Keystore) {
-	initRequest := vault.InitRequest{
+func initialize(vaultClient *api.Client, keystoreClient keystore.Keystore) {
+	initRequest := api.InitRequest{
 		SecretShares:    5,
 		SecretThreshold: 3,
 	}
 
-	initRequestData, err := json.Marshal(&initRequest)
+	initResponse, err := vaultClient.Sys().Init(&initRequest)
 	if err != nil {
-		log.Println(err)
-		return
-	}
-
-	r := bytes.NewReader(initRequestData)
-	request, err := http.NewRequest("PUT", vaultAddr+"/v1/sys/init", r)
-	if err != nil {
-		log.Println(err)
-		return
-	}
-
-	response, err := httpClient.Do(request)
-	if err != nil {
-		log.Println(err)
-		return
-	}
-	defer response.Body.Close()
-
-	initRequestResponseBody, err := ioutil.ReadAll(response.Body)
-	if err != nil {
-		log.Println(err)
-		return
-	}
-
-	if response.StatusCode != 200 {
-		log.Printf("init: non 200 status code: %d", response.StatusCode)
-		return
-	}
-
-	var initResponse vault.InitResponse
-
-	if err := json.Unmarshal(initRequestResponseBody, &initResponse); err != nil {
 		log.Println(err)
 		return
 	}
@@ -190,15 +148,15 @@ func initialize(keystoreClient keystore.Keystore) {
 	log.Println("Initialization complete.")
 }
 
-func unseal(keystoreClient keystore.Keystore) {
+func unseal(vaultClient *api.Client, keystoreClient keystore.Keystore) {
 	initResponse, err := keystoreClient.ReadAndDecrypt()
 	if err != nil {
 		log.Println(err)
 		return
 	}
 
-	for _, key := range initResponse.KeysBase64 {
-		done, err := unsealOne(key)
+	for _, key := range initResponse.KeysB64 {
+		done, err := unsealOne(vaultClient, key)
 		if done {
 			return
 		}
@@ -210,39 +168,9 @@ func unseal(keystoreClient keystore.Keystore) {
 	}
 }
 
-func unsealOne(key string) (bool, error) {
-	unsealRequest := vault.UnsealRequest{
-		Key: key,
-	}
-
-	unsealRequestData, err := json.Marshal(&unsealRequest)
+func unsealOne(vaultClient *api.Client, key string) (bool, error) {
+	unsealResponse, err := vaultClient.Sys().Unseal(key)
 	if err != nil {
-		return false, err
-	}
-
-	r := bytes.NewReader(unsealRequestData)
-	request, err := http.NewRequest(http.MethodPut, vaultAddr+"/v1/sys/unseal", r)
-	if err != nil {
-		return false, err
-	}
-
-	response, err := httpClient.Do(request)
-	if err != nil {
-		return false, err
-	}
-	defer response.Body.Close()
-
-	if response.StatusCode != 200 {
-		return false, fmt.Errorf("unseal: non-200 status code: %d", response.StatusCode)
-	}
-
-	unsealRequestResponseBody, err := ioutil.ReadAll(response.Body)
-	if err != nil {
-		return false, err
-	}
-
-	var unsealResponse vault.UnsealResponse
-	if err := json.Unmarshal(unsealRequestResponseBody, &unsealResponse); err != nil {
 		return false, err
 	}
 

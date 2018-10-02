@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"github.com/kelseyhightower/vault-init/pkg/vault"
+	"github.com/hashicorp/vault/api"
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/cloudkms/v1"
 	"google.golang.org/api/option"
@@ -61,7 +61,7 @@ func (keystore *GcpKeystore) Close() {
 	defer keystore.storageCtxCancel()
 }
 
-func (keystore *GcpKeystore) EncryptAndWrite(initResponse vault.InitResponse) error {
+func (keystore *GcpKeystore) EncryptAndWrite(initResponse *api.InitResponse) error {
 	rootTokenEncryptRequest := &cloudkms.EncryptRequest{
 		Plaintext: base64.StdEncoding.EncodeToString([]byte(initResponse.RootToken)),
 	}
@@ -112,7 +112,7 @@ func (keystore *GcpKeystore) EncryptAndWrite(initResponse vault.InitResponse) er
 	return nil
 }
 
-func (keystore *GcpKeystore) ReadAndDecrypt() (*vault.InitResponse, error) {
+func (keystore *GcpKeystore) ReadAndDecrypt() (*api.InitResponse, error) {
 	bucket := keystore.storageClient.Bucket(keystore.gcsBucketName)
 
 	ctx := context.Background()
@@ -137,7 +137,7 @@ func (keystore *GcpKeystore) ReadAndDecrypt() (*vault.InitResponse, error) {
 		return nil, err
 	}
 
-	var initResponse vault.InitResponse
+	var initResponse api.InitResponse
 
 	unsealKeysPlaintext, err := base64.StdEncoding.DecodeString(unsealKeysDecryptResponse.Plaintext)
 	if err != nil {
@@ -150,4 +150,3 @@ func (keystore *GcpKeystore) ReadAndDecrypt() (*vault.InitResponse, error) {
 
 	return &initResponse, nil
 }
-
