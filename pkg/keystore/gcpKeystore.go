@@ -56,12 +56,12 @@ func NewGcpKeystore(gcsBucketName string, kmsKeyID string) (*GcpKeystore, error)
 	}, nil
 }
 
-func (keystore *GcpKeystore) Close() {
+func (keystore GcpKeystore) Close() {
 	defer keystore.kmsCtxCancel()
 	defer keystore.storageCtxCancel()
 }
 
-func (keystore *GcpKeystore) EncryptAndWrite(initResponse *api.InitResponse) error {
+func (keystore GcpKeystore) EncryptAndWrite(initResponse *api.InitResponse) error {
 	rootTokenEncryptRequest := &cloudkms.EncryptRequest{
 		Plaintext: base64.StdEncoding.EncodeToString([]byte(initResponse.RootToken)),
 	}
@@ -112,7 +112,7 @@ func (keystore *GcpKeystore) EncryptAndWrite(initResponse *api.InitResponse) err
 	return nil
 }
 
-func (keystore *GcpKeystore) ReadAndDecrypt() (*api.InitResponse, error) {
+func (keystore GcpKeystore) ReadAndDecrypt() (*api.InitResponse, error) {
 	bucket := keystore.storageClient.Bucket(keystore.gcsBucketName)
 
 	ctx := context.Background()

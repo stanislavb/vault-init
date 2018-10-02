@@ -7,6 +7,7 @@ package main
 import (
 	"crypto/tls"
 	"github.com/hashicorp/vault/api"
+	"github.com/kelseyhightower/vault-init/pkg/keystore"
 	"log"
 	"net/http"
 	"os"
@@ -14,15 +15,18 @@ import (
 	"strconv"
 	"syscall"
 	"time"
-
-	"github.com/kelseyhightower/vault-init/pkg/keystore"
 )
 
 var (
 	checkInterval string
 )
 
-func initGcpKms() *keystore.GcpKeystore {
+const (
+	providerGcp = "gcp"
+	providerAws = "aws"
+)
+
+func createGcpKeystore() *keystore.GcpKeystore {
 	gcsBucketName := os.Getenv("GCS_BUCKET_NAME")
 	if gcsBucketName == "" {
 		log.Fatal("GCS_BUCKET_NAME must be set and not empty")
@@ -39,6 +43,32 @@ func initGcpKms() *keystore.GcpKeystore {
 	}
 
 	return gcpKeystore
+}
+
+func createAwsKeystore() *keystore.AwsKeystore {
+	kmsKeyID := os.Getenv("KMS_KEY_ID")
+	if kmsKeyID == "" {
+		log.Fatal("KMS_KEY_ID must be set and not empty")
+	}
+
+	return keystore.NewAwsKeystore(kmsKeyID)
+}
+
+func createKeystore() keystore.Keystore {
+	cloudProvider := os.Getenv("CLOUD_PROVIDER")
+	if cloudProvider == "" {
+		cloudProvider = providerGcp
+	}
+
+	switch cloudProvider {
+	case providerGcp:
+		return createGcpKeystore()
+	case providerAws:
+		return createAwsKeystore()
+	}
+
+	log.Fatalf("Unknow CLOUD_PROVIDER: %s", cloudProvider)
+	return nil
 }
 
 func main() {
@@ -61,7 +91,7 @@ func main() {
 
 	checkIntervalDuration := time.Duration(i) * time.Second
 
-	keystoreClient := initGcpKms()
+	keystoreClient := createKeystore()
 	defer keystoreClient.Close()
 
 	httpClient := http.Client{
