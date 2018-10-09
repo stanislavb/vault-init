@@ -51,7 +51,12 @@ func createAwsKeystore() *keystore.AwsKeystore {
 		log.Fatal("KMS_KEY_ID must be set and not empty")
 	}
 
-	return keystore.NewAwsKeystore(kmsKeyID)
+	secretsPath := os.Getenv("AWS_SECRETS_PATH")
+	if secretsPath == "" {
+		log.Fatal("AWS_SECRETS_PATH must be set and not empty")
+	}
+
+	return keystore.NewAwsKeystore(kmsKeyID, secretsPath)
 }
 
 func createKeystore() keystore.Keystore {
