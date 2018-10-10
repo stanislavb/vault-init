@@ -7,6 +7,8 @@ import (
 	"github.com/aws/aws-sdk-go/service/secretsmanager"
 	"github.com/hashicorp/vault/api"
 	"log"
+	"path"
+	"strings"
 )
 
 var (
@@ -16,16 +18,22 @@ var (
 
 type AwsKeystore struct {
 	kmsKeyID          string
+	secretsPath       string
 	secretsMgrService *secretsmanager.SecretsManager
 }
 
-func NewAwsKeystore(kmsKeyID string) *AwsKeystore {
+func NewAwsKeystore(kmsKeyID string, secretsPath string) *AwsKeystore {
 	secretsMgrService := secretsmanager.New(session.Must(session.NewSession()))
 
 	return &AwsKeystore{
 		kmsKeyID:          kmsKeyID,
+		secretsPath:       secretsPath,
 		secretsMgrService: secretsMgrService,
 	}
+}
+
+func (keystore *AwsKeystore) secretPath(name string) string {
+	return path.Join(strings.TrimRight(keystore.secretsPath, "/"), name)
 }
 
 func (keystore AwsKeystore) Close() {
@@ -57,8 +65,9 @@ func (keystore AwsKeystore) EncryptAndWrite(initResponse *api.InitResponse) erro
 }
 
 func (keystore AwsKeystore) ReadAndDecrypt() (*api.InitResponse, error) {
+	secretPath := keystore.secretPath(unsealKeysFile)
 	secretValueInput := secretsmanager.GetSecretValueInput{
-		SecretId: &unsealKeysFile,
+		SecretId: &secretPath,
 	}
 	secretValueOutput, err := keystore.secretsMgrService.GetSecretValueWithContext(context.Background(), &secretValueInput)
 	if err != nil {
@@ -75,9 +84,10 @@ func (keystore AwsKeystore) ReadAndDecrypt() (*api.InitResponse, error) {
 }
 
 func (keystore AwsKeystore) createSecret(name string, content []byte) error {
+	secretPath := keystore.secretPath(name)
 	secretInput := secretsmanager.CreateSecretInput{
 		KmsKeyId:     &keystore.kmsKeyID,
-		Name:         &name,
+		Name:         &secretPath,
 		SecretBinary: content,
 	}
 
@@ -86,6 +96,6 @@ func (keystore AwsKeystore) createSecret(name string, content []byte) error {
 		return err
 	}
 
-	log.Printf("Secret written to secretsmanager as '%s'", name)
+	log.Printf("Secret written to secretsmanager as '%s'", secretPath)
 	return nil
 }
