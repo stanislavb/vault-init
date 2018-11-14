@@ -5,16 +5,15 @@
 package main
 
 import (
-	"crypto/tls"
-	"github.com/hashicorp/vault/api"
-	"github.com/kelseyhightower/vault-init/pkg/keystore"
 	"log"
-	"net/http"
 	"os"
 	"os/signal"
 	"strconv"
 	"syscall"
 	"time"
+
+	"github.com/hashicorp/vault/api"
+	"github.com/kelseyhightower/vault-init/pkg/keystore"
 )
 
 var (
@@ -22,20 +21,28 @@ var (
 )
 
 const (
-	providerGcp = "gcp"
-	providerAws = "aws"
+	providerGcp   = "gcp"
+	providerAws   = "aws"
+	providerAwsS3 = "aws-s3"
 )
 
-func createGcpKeystore() *keystore.GcpKeystore {
-	gcsBucketName := os.Getenv("GCS_BUCKET_NAME")
-	if gcsBucketName == "" {
-		log.Fatal("GCS_BUCKET_NAME must be set and not empty")
+func getEnv(name string) string {
+	value := os.Getenv(name)
+	if name == "" {
+		log.Fatalf("%s must be set and not empty", name)
 	}
+	return value
+}
 
-	kmsKeyID := os.Getenv("KMS_KEY_ID")
-	if kmsKeyID == "" {
-		log.Fatal("KMS_KEY_ID must be set and not empty")
+func createAwsConfig() *keystore.AwsConfig {
+	return &keystore.AwsConfig{
+		Endpoint: os.Getenv("AWS_ENDPOINT"),
 	}
+}
+
+func createGcpKeystore() *keystore.GcpKeystore {
+	gcsBucketName := getEnv("GCS_BUCKET_NAME")
+	kmsKeyID := getEnv("KMS_KEY_ID")
 
 	gcpKeystore, err := keystore.NewGcpKeystore(gcsBucketName, kmsKeyID)
 	if err != nil {
@@ -46,17 +53,20 @@ func createGcpKeystore() *keystore.GcpKeystore {
 }
 
 func createAwsKeystore() *keystore.AwsKeystore {
-	kmsKeyID := os.Getenv("KMS_KEY_ID")
-	if kmsKeyID == "" {
-		log.Fatal("KMS_KEY_ID must be set and not empty")
-	}
+	return keystore.NewAwsKeystore(&keystore.AwsKeystoreConfig{
+		AwsConfig:   createAwsConfig(),
+		KmsKeyID:    getEnv("KMS_KEY_ID"),
+		SecretsPath: getEnv("AWS_SECRETS_PATH"),
+	})
+}
 
-	secretsPath := os.Getenv("AWS_SECRETS_PATH")
-	if secretsPath == "" {
-		log.Fatal("AWS_SECRETS_PATH must be set and not empty")
-	}
-
-	return keystore.NewAwsKeystore(kmsKeyID, secretsPath)
+func createAwsS3Keystore() *keystore.AwsS3Keystore {
+	return keystore.NewAwsS3Keystore(&keystore.AwsS3KeystoreConfig{
+		AwsConfig:     createAwsConfig(),
+		EncryptionKey: getEnv("AWS_ENCRYPTION_KEY"),
+		BucketName:    getEnv("AWS_BUCKET_NAME"),
+		BucketPath:    getEnv("AWS_BUCKET_PATH"),
+	})
 }
 
 func createKeystore() keystore.Keystore {
@@ -70,6 +80,8 @@ func createKeystore() keystore.Keystore {
 		return createGcpKeystore()
 	case providerAws:
 		return createAwsKeystore()
+	case providerAwsS3:
+		return createAwsS3Keystore()
 	}
 
 	log.Fatalf("Unknow CLOUD_PROVIDER: %s", cloudProvider)
@@ -78,11 +90,6 @@ func createKeystore() keystore.Keystore {
 
 func main() {
 	log.Println("Starting the vault-init service...")
-
-	vaultAddr := os.Getenv("VAULT_ADDR")
-	if vaultAddr == "" {
-		vaultAddr = "https://127.0.0.1:8200"
-	}
 
 	checkInterval = os.Getenv("CHECK_INTERVAL")
 	if checkInterval == "" {
@@ -99,17 +106,7 @@ func main() {
 	keystoreClient := createKeystore()
 	defer keystoreClient.Close()
 
-	httpClient := http.Client{
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{
-				InsecureSkipVerify: true,
-			},
-		},
-	}
-
 	vaultConfig := api.DefaultConfig()
-	vaultConfig.Address = vaultAddr
-	vaultConfig.HttpClient = &httpClient
 	vaultClient, err := api.NewClient(vaultConfig)
 	if err != nil {
 		log.Fatalf("Failed to create vault client %s", err)
@@ -129,34 +126,36 @@ func main() {
 	}
 
 	for {
+		checkVaultStatus(vaultClient, keystoreClient)
 		select {
 		case <-signalCh:
 			stop()
 		case <-time.After(checkIntervalDuration):
 		}
-		response, err := vaultClient.Sys().Health()
+	}
+}
 
-		if err != nil {
-			log.Println(err)
-			time.Sleep(checkIntervalDuration)
-			continue
-		}
+func checkVaultStatus(vaultClient *api.Client, keystoreClient keystore.Keystore) {
+	response, err := vaultClient.Sys().Health()
+	if err != nil {
+		log.Println(err)
+		return
+	}
 
-		if !response.Initialized {
-			log.Println("Vault is not initialized. Initializing and unsealing...")
-			initialize(vaultClient, keystoreClient)
-			unseal(vaultClient, keystoreClient)
-			continue
-		}
-		if response.Sealed {
-			log.Println("Vault is sealed. Unsealing...")
-			unseal(vaultClient, keystoreClient)
-			continue
-		}
-		if response.Standby {
-			log.Println("Vault is unsealed and in standby mode.")
-			continue
-		}
+	if !response.Initialized {
+		log.Println("Vault is not initialized. Initializing and unsealing...")
+		initialize(vaultClient, keystoreClient)
+		unseal(vaultClient, keystoreClient)
+		return
+	}
+	if response.Sealed {
+		log.Println("Vault is sealed. Unsealing...")
+		unseal(vaultClient, keystoreClient)
+		return
+	}
+	if response.Standby {
+		log.Println("Vault is unsealed and in standby mode.")
+		return
 	}
 }
 

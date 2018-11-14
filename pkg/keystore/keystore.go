@@ -2,12 +2,15 @@ package keystore
 
 import (
 	"fmt"
-	"github.com/hashicorp/vault/api"
 	"runtime"
+
+	"github.com/hashicorp/vault/api"
 )
 
 var (
-	UserAgent = fmt.Sprintf("vault-init/0.1.0 (%s)", runtime.Version())
+	UserAgent      = fmt.Sprintf("vault-init/0.1.0 (%s)", runtime.Version())
+	unsealKeysFile = "vault/unseal-keys.json"
+	rootTokenFile  = "vault/root-token"
 )
 
 type Keystore interface {

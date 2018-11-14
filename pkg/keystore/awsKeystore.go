@@ -3,17 +3,14 @@ package keystore
 import (
 	"context"
 	"encoding/json"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/secretsmanager"
-	"github.com/hashicorp/vault/api"
 	"log"
 	"path"
 	"strings"
-)
 
-var (
-	unsealKeysFile = "vault/unseal-keys.json"
-	rootTokenFile  = "vault/root-token"
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/secretsmanager"
+	"github.com/hashicorp/vault/api"
 )
 
 type AwsKeystore struct {
@@ -22,12 +19,33 @@ type AwsKeystore struct {
 	secretsMgrService *secretsmanager.SecretsManager
 }
 
-func NewAwsKeystore(kmsKeyID string, secretsPath string) *AwsKeystore {
-	secretsMgrService := secretsmanager.New(session.Must(session.NewSession()))
+type AwsKeystoreConfig struct {
+	AwsConfig   *AwsConfig
+	KmsKeyID    string
+	SecretsPath string
+}
+
+type AwsConfig struct {
+	Endpoint string
+}
+
+func createAwsSession(config *AwsConfig) *session.Session {
+	if config.Endpoint != "" {
+		return session.Must(session.NewSession(&aws.Config{
+			Endpoint:         &config.Endpoint,
+			S3ForcePathStyle: aws.Bool(true),
+		}))
+	}
+
+	return session.Must(session.NewSession())
+}
+
+func NewAwsKeystore(config *AwsKeystoreConfig) *AwsKeystore {
+	secretsMgrService := secretsmanager.New(createAwsSession(config.AwsConfig))
 
 	return &AwsKeystore{
-		kmsKeyID:          kmsKeyID,
-		secretsPath:       secretsPath,
+		kmsKeyID:          config.KmsKeyID,
+		secretsPath:       config.SecretsPath,
 		secretsMgrService: secretsMgrService,
 	}
 }
