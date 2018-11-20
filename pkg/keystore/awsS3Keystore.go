@@ -33,7 +33,8 @@ type AwsS3KeystoreConfig struct {
 func NewAwsS3Keystore(config *AwsS3KeystoreConfig) *AwsS3Keystore {
 	s3Service := s3.New(createAwsSession(config.AwsConfig))
 
-	encryptionKeyMD5 := base64.StdEncoding.EncodeToString(md5.New().Sum([]byte(config.EncryptionKey)))
+	md5Sum := md5.Sum([]byte(config.EncryptionKey))
+	encryptionKeyMD5 := base64.StdEncoding.EncodeToString(md5Sum[:])
 
 	return &AwsS3Keystore{
 		encryptionKey:    config.EncryptionKey,
