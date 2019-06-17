@@ -1,4 +1,4 @@
-FROM golang:1.11.1
+FROM golang:1.12
 WORKDIR /build
 COPY . .
 RUN CGO_ENABLE=0 GOOS=linux go build -o vault-init -v .
