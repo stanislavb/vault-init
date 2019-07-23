@@ -31,7 +31,6 @@ type AwsKeystoreConfig struct {
 
 type AwsConfig struct {
 	Endpoint                string
-	RetryOnCredentialsError bool
 	RetryOnCredentialsWait  time.Duration
 }
 
@@ -46,16 +45,12 @@ func createAwsSession(config *AwsConfig) *session.Session {
 	return session.Must(session.NewSession())
 }
 
-func waitUntilValidSession(config *AwsConfig) *session.Session {
+func waitUntilValidSession(config *AwsConfig) (*session.Session, error) {
 	awsSession := createAwsSession(config)
-	if !config.RetryOnCredentialsError {
-		return awsSession
-	}
-
 	for {
 		_, err := awsSession.Config.Credentials.Get()
 		if err != credentials.ErrNoValidProvidersFoundInChain {
-			return awsSession
+			return awsSession, err
 		}
 
 		_, _ = fmt.Fprintf(os.Stderr, "[ERROR] Failed get retrieve AWS credentials. Retrying.. %v", err)
@@ -64,14 +59,19 @@ func waitUntilValidSession(config *AwsConfig) *session.Session {
 	}
 }
 
-func NewAwsKeystore(config *AwsKeystoreConfig) *AwsKeystore {
-	secretsMgrService := secretsmanager.New(waitUntilValidSession(config.AwsConfig))
+func NewAwsKeystore(config *AwsKeystoreConfig) (*AwsKeystore, error) {
+	awsSession, err := waitUntilValidSession(config.AwsConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	secretsMgrService := secretsmanager.New(awsSession)
 
 	return &AwsKeystore{
 		kmsKeyID:          config.KmsKeyID,
 		secretsPath:       config.SecretsPath,
 		secretsMgrService: secretsMgrService,
-	}
+	}, nil
 }
 
 func (keystore *AwsKeystore) secretPath(name string) string {
