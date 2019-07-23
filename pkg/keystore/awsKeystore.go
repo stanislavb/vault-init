@@ -3,11 +3,15 @@ package keystore
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
+	"os"
 	"path"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/secretsmanager"
 	"github.com/hashicorp/vault/api"
@@ -26,7 +30,9 @@ type AwsKeystoreConfig struct {
 }
 
 type AwsConfig struct {
-	Endpoint string
+	Endpoint                string
+	RetryOnCredentialsError bool
+	RetryOnCredentialsWait  time.Duration
 }
 
 func createAwsSession(config *AwsConfig) *session.Session {
@@ -40,8 +46,26 @@ func createAwsSession(config *AwsConfig) *session.Session {
 	return session.Must(session.NewSession())
 }
 
+func waitUntilValidSession(config *AwsConfig) *session.Session {
+	awsSession := createAwsSession(config)
+	if !config.RetryOnCredentialsError {
+		return awsSession
+	}
+
+	for {
+		_, err := awsSession.Config.Credentials.Get()
+		if err != credentials.ErrNoValidProvidersFoundInChain {
+			return awsSession
+		}
+
+		_, _ = fmt.Fprintf(os.Stderr, "[ERROR] Failed get retrieve AWS credentials. Retrying.. %v", err)
+		awsSession = createAwsSession(config)
+		time.Sleep(config.RetryOnCredentialsWait)
+	}
+}
+
 func NewAwsKeystore(config *AwsKeystoreConfig) *AwsKeystore {
-	secretsMgrService := secretsmanager.New(createAwsSession(config.AwsConfig))
+	secretsMgrService := secretsmanager.New(waitUntilValidSession(config.AwsConfig))
 
 	return &AwsKeystore{
 		kmsKeyID:          config.KmsKeyID,

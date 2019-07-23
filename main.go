@@ -35,8 +35,16 @@ func getEnv(name string) string {
 }
 
 func createAwsConfig() *keystore.AwsConfig {
+	retryOnCredentialsError, _ := strconv.ParseBool(os.Getenv("AWS_RETRY_ON_CREDENTIALS_ERROR"))
+	retryOnCredentialsWait, err := time.ParseDuration(os.Getenv("AWS_RETRY_ON_CREDENTIALS_WAIT"))
+	if err != nil || retryOnCredentialsWait == 0 {
+		retryOnCredentialsWait = 5 * time.Second
+	}
+
 	return &keystore.AwsConfig{
-		Endpoint: os.Getenv("AWS_ENDPOINT"),
+		Endpoint:                os.Getenv("AWS_ENDPOINT"),
+		RetryOnCredentialsError: retryOnCredentialsError,
+		RetryOnCredentialsWait:  retryOnCredentialsWait,
 	}
 }
 
