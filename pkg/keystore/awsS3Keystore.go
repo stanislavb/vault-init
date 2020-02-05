@@ -30,8 +30,13 @@ type AwsS3KeystoreConfig struct {
 	BucketPath    string
 }
 
-func NewAwsS3Keystore(config *AwsS3KeystoreConfig) *AwsS3Keystore {
-	s3Service := s3.New(createAwsSession(config.AwsConfig))
+func NewAwsS3Keystore(config *AwsS3KeystoreConfig) (*AwsS3Keystore, error) {
+	awsSession, err := waitUntilValidSession(config.AwsConfig)
+	if err != nil {
+		return nil, err
+	}
+	
+	s3Service := s3.New(awsSession)
 
 	md5Sum := md5.Sum([]byte(config.EncryptionKey))
 	encryptionKeyMD5 := base64.StdEncoding.EncodeToString(md5Sum[:])
@@ -42,7 +47,7 @@ func NewAwsS3Keystore(config *AwsS3KeystoreConfig) *AwsS3Keystore {
 		bucketName:       config.BucketName,
 		bucketPath:       config.BucketPath,
 		s3Service:        s3Service,
-	}
+	}, nil
 }
 
 func (keystore *AwsS3Keystore) getBucketPath(name string) string {

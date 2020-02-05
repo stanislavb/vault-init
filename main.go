@@ -35,8 +35,14 @@ func getEnv(name string) string {
 }
 
 func createAwsConfig() *keystore.AwsConfig {
+	retryOnCredentialsWait, err := time.ParseDuration(os.Getenv("AWS_RETRY_ON_CREDENTIALS_WAIT"))
+	if err != nil || retryOnCredentialsWait == 0 {
+		retryOnCredentialsWait = 5 * time.Second
+	}
+
 	return &keystore.AwsConfig{
-		Endpoint: os.Getenv("AWS_ENDPOINT"),
+		Endpoint:                os.Getenv("AWS_ENDPOINT"),
+		RetryOnCredentialsWait:  retryOnCredentialsWait,
 	}
 }
 
@@ -53,20 +59,30 @@ func createGcpKeystore() *keystore.GcpKeystore {
 }
 
 func createAwsKeystore() *keystore.AwsKeystore {
-	return keystore.NewAwsKeystore(&keystore.AwsKeystoreConfig{
+	awsKeystore, err := keystore.NewAwsKeystore(&keystore.AwsKeystoreConfig{
 		AwsConfig:   createAwsConfig(),
 		KmsKeyID:    getEnv("KMS_KEY_ID"),
 		SecretsPath: getEnv("AWS_SECRETS_PATH"),
 	})
+	if err != nil {
+		log.Fatalf("failed to initialize aws store: %v", err)
+	}
+
+	return awsKeystore
 }
 
 func createAwsS3Keystore() *keystore.AwsS3Keystore {
-	return keystore.NewAwsS3Keystore(&keystore.AwsS3KeystoreConfig{
+	s3Keystore, err := keystore.NewAwsS3Keystore(&keystore.AwsS3KeystoreConfig{
 		AwsConfig:     createAwsConfig(),
 		EncryptionKey: getEnv("AWS_ENCRYPTION_KEY"),
 		BucketName:    getEnv("AWS_BUCKET_NAME"),
 		BucketPath:    getEnv("AWS_BUCKET_PATH"),
 	})
+	if err != nil {
+		log.Fatalf("failed to initialize aws store: %v", err)
+	}
+
+	return s3Keystore
 }
 
 func createKeystore() keystore.Keystore {
