@@ -8,7 +8,7 @@ import (
 )
 
 var (
-	UserAgent      = fmt.Sprintf("vault-init/0.4.0 (%s)", runtime.Version())
+	UserAgent      = fmt.Sprintf("vault-init/0.5.0 (%s)", runtime.Version())
 	unsealKeysFile = "vault/unseal-keys.json"
 	rootTokenFile  = "vault/root-token"
 )
