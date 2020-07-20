@@ -5,6 +5,7 @@
 package main
 
 import (
+	"flag"
 	"log"
 	"os"
 	"os/signal"
@@ -107,6 +108,9 @@ func createKeystore() keystore.Keystore {
 func main() {
 	log.Println("Starting the vault-init service...")
 
+	var initOne = flag.String("init-one", "", "Specify a single pod name where vault should be initialized")
+	flag.Parse()
+
 	checkInterval = os.Getenv("CHECK_INTERVAL")
 	if checkInterval == "" {
 		checkInterval = "10"
@@ -121,6 +125,8 @@ func main() {
 
 	keystoreClient := createKeystore()
 	defer keystoreClient.Close()
+
+	podName := os.Getenv("POD_NAME")
 
 	vaultConfig := api.DefaultConfig()
 	vaultClient, err := api.NewClient(vaultConfig)
@@ -142,7 +148,7 @@ func main() {
 	}
 
 	for {
-		checkVaultStatus(vaultClient, keystoreClient)
+		checkVaultStatus(vaultClient, keystoreClient, *initOne, podName)
 		select {
 		case <-signalCh:
 			stop()
@@ -151,7 +157,7 @@ func main() {
 	}
 }
 
-func checkVaultStatus(vaultClient *api.Client, keystoreClient keystore.Keystore) {
+func checkVaultStatus(vaultClient *api.Client, keystoreClient keystore.Keystore, initOne string, podName string) {
 	response, err := vaultClient.Sys().Health()
 	if err != nil {
 		log.Println(err)
@@ -159,8 +165,11 @@ func checkVaultStatus(vaultClient *api.Client, keystoreClient keystore.Keystore)
 	}
 
 	if !response.Initialized {
-		log.Println("Vault is not initialized. Initializing and unsealing...")
-		initialize(vaultClient, keystoreClient)
+		if initOne != "" && podName == initOne {
+			log.Println("Vault is not initialized. Initializing...")
+			initialize(vaultClient, keystoreClient)
+		}
+		log.Println("Vault is sealed. Unsealing...")
 		unseal(vaultClient, keystoreClient)
 		return
 	}
