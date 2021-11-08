@@ -3,23 +3,21 @@ module github.com/kelseyhightower/vault-init
 go 1.14
 
 require (
-	cloud.google.com/go v0.39.0
-	github.com/aws/aws-sdk-go v1.25.41
-	github.com/go-ini/ini v1.25.4 // indirect
-	github.com/golang/snappy v0.0.1 // indirect
-	github.com/google/martian v2.1.0+incompatible // indirect
-	github.com/googleapis/gax-go v2.0.2+incompatible // indirect
-	github.com/hashicorp/go-cleanhttp v0.5.1 // indirect
-	github.com/hashicorp/go-sockaddr v1.0.2 // indirect
-	github.com/hashicorp/hcl v1.0.0 // indirect
-	github.com/hashicorp/vault v1.4.3
-	github.com/hashicorp/vault/api v1.0.5-0.20200317185738-82f498082f02
-	github.com/mitchellh/mapstructure v1.1.2 // indirect
-	github.com/ryanuber/go-glob v1.0.0 // indirect
-	github.com/smartystreets/goconvey v0.0.0-20190330032615-68dc04aab96a // indirect
-	go.opencensus.io v0.22.0 // indirect
-	golang.org/x/oauth2 v0.0.0-20190604053449-0f29369cfe45
-	golang.org/x/time v0.0.0-20190308202827-9d24e82272b4 // indirect
-	google.golang.org/api v0.14.0
-	google.golang.org/appengine v1.6.1 // indirect
+	cloud.google.com/go/storage v1.10.0
+	github.com/aws/aws-sdk-go v1.41.19
+	github.com/fatih/color v1.13.0 // indirect
+	github.com/frankban/quicktest v1.14.0 // indirect
+	github.com/go-test/deep v1.0.8 // indirect
+	github.com/hashicorp/vault/api v1.3.0
+	github.com/pierrec/lz4 v2.6.1+incompatible // indirect
+	golang.org/x/crypto v0.0.0-20210921155107-089bfa567519 // indirect
+	golang.org/x/net v0.0.0-20211105192438-b53810dc28af // indirect
+	golang.org/x/oauth2 v0.0.0-20211104180415-d3ed0bb246c8
+	golang.org/x/sys v0.0.0-20211107104306-e0b2ad06fe42 // indirect
+	google.golang.org/api v0.60.0
+	google.golang.org/genproto v0.0.0-20211104193956-4c6863e31247 // indirect
+	google.golang.org/grpc v1.42.0 // indirect
+	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
+	gopkg.in/square/go-jose.v2 v2.6.0 // indirect
+	gopkg.in/yaml.v2 v2.4.0 // indirect
 )
